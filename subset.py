@@ -6,8 +6,8 @@ r = shapefile.Reader("buildingfootprints/Building_Footprint")
 w = shapefile.Writer(shapeType=shapefile.POLYGON)
 # Copy the fields to the writer
 w.fields = list(r.fields)
-# Grab the geometry and records from all features&nbsp;
-# with the correct county name&nbsp;
+# Grab the geometry and records from all features
+# with the correct county name
 selection = [] 
 for rec in enumerate(r.records()):
    if rec[1][1].startswith("Hancock"):
