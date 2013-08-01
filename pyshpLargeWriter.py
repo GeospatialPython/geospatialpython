@@ -155,7 +155,7 @@ lw.w.field("Y", "C", "40")
 status = 0
 
 # Number of random points to write
-total = 2147483647
+total = 107374177
 
 for i in range(total):
   # Progress meter
@@ -177,9 +177,10 @@ for i in range(total):
   #x2,y2 = random_point()
   #x3,y3 = random_point()
   #x4,y4 = random_point()      
-  # Call the shapefile poly() method 
-  #   lw.w.poly(parts=[[[x,y],[x1,y1],[x2,y2],[x3,y3],[x4,y4]]])
-  #   lw.record(i,x,y) 
+  #Call the shapefile poly() method 
+  #lw.w.poly(parts=[[[x,y],[x1,y1],[x2,y2],[x3,y3],[x4,y4]]])
+  #Call the specialized record method
+  #lw.record(i,x,y) 
 
 # Special LargeWriter save method
 lw.save()    
