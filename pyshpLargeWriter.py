@@ -5,8 +5,9 @@ import random
 import time
 
 class LargeWriter:
-  def __init__(self, filename=None, shapeType=1):
+  def __init__(self, filename=None, shapeType=1, hasShx=True):
     self.filename = filename
+    self.hasShx = hasShx
     # Count records for metadata
     self.count = 0
     # Maximum number of records before disk flush
@@ -18,10 +19,12 @@ class LargeWriter:
     self.maxy = 0
     self.numRecs = 0
     self.tmpShp = cStringIO.StringIO()
-    self.tmpShx = cStringIO.StringIO()
+    if self.hasShx:
+      self.tmpShx = cStringIO.StringIO()
     self.tmpDbf = cStringIO.StringIO()
     self.shp = open("%s.shp" % self.filename, "wb")
-    self.shx = open("%s.shx" % self.filename, "wb")
+    if self.hasShx:
+      self.shx = open("%s.shx" % self.filename, "wb")
     self.dbf = open("%s.dbf" % self.filename, "wb")
     self.dbfHdrLen = 0
     self.w = shapefile.Writer(shapeType)
@@ -35,30 +38,33 @@ class LargeWriter:
         self.xmax = struct.unpack("<d", self.tmpShp.read(8))[0]
         self.ymax = struct.unpack("<d", self.tmpShp.read(8))[0]        
         self.tmpShp.seek(0)
-        self.tmpShx.seek(0)
+        if self.hasShx:
+          self.tmpShx.seek(0)
         self.tmpDbf.seek(8)
         # The length of the dbf header will not change
         self.dbfHdrLen = struct.unpack("<H", self.tmpDbf.read(2))[0]
         self.tmpDbf.seek(0)
         self.shp.write(self.tmpShp.read())
-        self.shx.write(self.tmpShx.read())
+        if self.hasShx:
+          self.shx.write(self.tmpShx.read())
         self.dbf.write(self.tmpDbf.read())
 
   def batch(self):
         self.started = True
         # Update shx offsets
-        self.tmpShx.seek(0,2)
-        shxsz = self.tmpShx.tell()
-        shxcur = 100
-        adder = self.shx.tell() / 2
-        self.tmpShx.seek(100) 
-        while shxcur < shxsz:         
-          offset = struct.unpack(">i", self.tmpShx.read(4))[0]
-          newOffset = adder + offset
-          self.tmpShx.seek(-4, 1)
-          self.tmpShx.write(struct.pack(">i", newOffset))
-          self.tmpShx.seek(8, 1)
-          shxcur = self.tmpShx.tell()
+        if self.hasShx:
+          self.tmpShx.seek(0,2)
+          shxsz = self.tmpShx.tell()
+          shxcur = 100
+          adder = self.shx.tell() / 2
+          self.tmpShx.seek(100) 
+          while shxcur < shxsz:         
+            offset = struct.unpack(">i", self.tmpShx.read(4))[0]
+            newOffset = adder + offset
+            self.tmpShx.seek(-4, 1)
+            self.tmpShx.write(struct.pack(">i", newOffset))
+            self.tmpShx.seek(8, 1)
+            shxcur = self.tmpShx.tell()
         # Get shp bounding box
         self.tmpShp.seek(36)
         xmin = struct.unpack("<d", self.tmpShp.read(8))[0]
@@ -73,7 +79,8 @@ class LargeWriter:
         self.tmpShx.seek(100)
         self.tmpDbf.seek(self.dbfHdrLen)       
         self.shp.write(self.tmpShp.read())
-        self.shx.write(self.tmpShx.read())
+        if self.hasShx:
+          self.shx.write(self.tmpShx.read())
         self.dbf.write(self.tmpDbf.read())
   
   def record(self, *recordList):
@@ -82,14 +89,18 @@ class LargeWriter:
     self.numRecs += 1
     apply(self.w.record, recordList)
     if self.count >= self.max:
-      self.w.save(shp=self.tmpShp, shx=self.tmpShx, dbf=self.tmpDbf)
+      if self.hasShx:
+        self.w.save(shp=self.tmpShp, shx=self.tmpShx, dbf=self.tmpDbf)
+      else:
+        self.w.save(shp=self.tmpShp, dbf=self.tmpDbf)  
       if not self.started:
         self.endcap()
       else:
         self.batch()
       # Reset the buffers for the next batch
       self.tmpShp = cStringIO.StringIO()
-      self.tmpShx = cStringIO.StringIO()
+      if self.hasShx:
+        self.tmpShx = cStringIO.StringIO()
       self.tmpDbf = cStringIO.StringIO()
       self.count = 0
         
@@ -99,18 +110,20 @@ class LargeWriter:
     self.shp.seek(24)
     self.shp.write(struct.pack(">i", shpLength))
     self.shp.seek(36)
-    self.shp.write(struct.pack("<4d", self.xmin,self.ymin,self.xmax,self.ymax))        
-    self.shx.seek(0,2)   
-    shxLength = self.shx.tell() / 2   
-    self.shx.seek(24)
-    self.shx.write(struct.pack(">i", shxLength))
-    self.shx.seek(36)
-    self.shx.write(struct.pack("<4d", self.xmin,self.ymin,self.xmax,self.ymax))          
+    self.shp.write(struct.pack("<4d", self.xmin,self.ymin,self.xmax,self.ymax))
+    if self.hasShx:        
+      self.shx.seek(0,2)   
+      shxLength = self.shx.tell() / 2   
+      self.shx.seek(24)
+      self.shx.write(struct.pack(">i", shxLength))
+      self.shx.seek(36)
+      self.shx.write(struct.pack("<4d", self.xmin,self.ymin,self.xmax,self.ymax))          
     # update dbf record count
     self.dbf.seek(4)
     self.dbf.write(struct.pack("<L", self.numRecs))
     self.shp.close()
-    self.shx.close()
+    if self.hasShx:
+      self.shx.close()
     self.dbf.close()        
         
 def random_point():
@@ -130,7 +143,8 @@ def progress(last, count, total):
 # Create a large shapefile writer with
 # a filname and a shapefile type.
 # 1=Point, 5=Polygon
-lw = LargeWriter("giantShp", 1)
+lw = LargeWriter("giantShp", 1, hasShx=True)
+#lw = LargeWriter("giantShp", 1, hasShx=False)
 
 # Add some dbf fields
 lw.w.field("ID", "C", "40")
@@ -141,7 +155,7 @@ lw.w.field("Y", "C", "40")
 status = 0
 
 # Number of random points to write
-total = 3000000
+total = 2147483647
 
 for i in range(total):
   # Progress meter
